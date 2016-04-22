@@ -1,13 +1,13 @@
-
+import 'babel-polyfill';
 import sentiment from 'sentiment';
 import twitter from './services/twitter';
 import redis from './services/redis';
+import config from './config';
 
-console.log(process.env.TWITTER_CONSUMER_KEY);
+const keywords = config.keywords.join(',');
 
-twitter.stream('statuses/sample', {}, (stream) => {
+twitter.stream('statuses/filter', {track: keywords}, (stream) => {
   stream.on('data', async function (data) {
-    console.log(new Date().getTime(), 'Tweet received: ', data.id);
     if (!data.text) {
       return;
     }
@@ -17,7 +17,21 @@ twitter.stream('statuses/sample', {}, (stream) => {
       return;
     }
 
-    const tweet = {
+    // Increment positive/negative
+    if (results.score > 0) {
+      redis.incrAsync('positive');
+    } else {
+      redis.incrAsync('negative');
+    }
+
+    // Increment individual positive words
+    results.positive.forEach(word => redis.zincrbyAsync('positive_words', 1, word));
+
+    // Increment individual negative words
+    results.negative.forEach(word => redis.zincrbyAsync('negative_words', 1, word));
+
+    // Publish tweet
+    redis.publish('tweets', {
       id: data.id,
       created: data.timestamp_ms,
       text: data.text,
@@ -26,20 +40,7 @@ twitter.stream('statuses/sample', {}, (stream) => {
         username: data.user.screen_name
       },
       results
-    };
-
-    if (tweet.results.score > 0) {
-      await redis.incrAsync('positive');
-    } else {
-      await redis.incrAsync('negative');
-    }
-
-    results.positive.forEach(word => redis.zincrbyAsync('positive_words', 1, word));
-    results.negative.forEach(word => redis.zincrbyAsync('negative_words', 1, word));
-
-    await redis.saddAsync('tweets', JSON.stringify(tweet));
-
-    console.log(new Date().getTime(), 'Tweet done: ', data.id);
+    });
   });
 
   stream.on('error', err => console.log(err));
