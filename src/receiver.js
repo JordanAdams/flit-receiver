@@ -1,7 +1,7 @@
+import {EventEmitter} from 'events';
 import twitter from './services/twitter';
 import transform from './transform-tweet';
 import filter from './filter-tweet';
-import {EventEmitter} from 'events';
 
 const defaults = {twitter, transform, filter};
 
