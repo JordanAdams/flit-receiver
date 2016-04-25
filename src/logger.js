@@ -1,5 +1,5 @@
-import winston from 'winston';
 import path from 'path';
+import winston from 'winston';
 // import config from './config';
 
 winston.add(winston.transports.File, {
