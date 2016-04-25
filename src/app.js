@@ -1,47 +1,58 @@
 import 'babel-polyfill';
-import sentiment from 'sentiment';
-import twitter from './services/twitter';
+import logger from './logger';
+import Receiver from './receiver';
 import redis from './services/redis';
-import config from './config';
 
-const keywords = config.keywords.join(',');
+const receiver = new Receiver();
 
-twitter.stream('statuses/filter', {track: keywords}, (stream) => {
-  stream.on('data', async function (data) {
-    if (!data.text) {
-      return;
-    }
+// Log starting the receiver
+receiver.on('start', () => logger.info('Receiver started'));
 
-    const results = sentiment(data.text);
-    if (results.score === 0) {
-      return;
-    }
+// Handle incoming tweets
+receiver.on('tweet', async function (tweet) {
+  logger.info('Tweet received', {id: tweet.id});
 
-    // Increment positive/negative
-    if (results.score > 0) {
-      redis.incrAsync('positive');
-    } else {
-      redis.incrAsync('negative');
-    }
+  // Update positive count & publish changes
+  if (tweet.sentiment.score > 0) {
+    const positive = await redis.incrAsync('positive');
+    logger.info(`Positive count incremented to ${positive}`);
 
-    // Increment individual positive words
-    results.positive.forEach(word => redis.zincrbyAsync('positive_words', 1, word));
+    redis.publish('positive_changed', positive);
+  }
 
-    // Increment individual negative words
-    results.negative.forEach(word => redis.zincrbyAsync('negative_words', 1, word));
+  // Update negative count & publish changes
+  if (tweet.sentiment.score < 0) {
+    const negative = await redis.incrAsync('negative');
+    logger.info(`Negative count incremented to ${negative}`);
 
-    // Publish tweet
-    redis.publish('tweets', {
-      id: data.id,
-      created: data.timestamp_ms,
-      text: data.text,
-      user: {
-        id: data.user.id,
-        username: data.user.screen_name
-      },
-      results
-    });
+    redis.publish('negative_changed', negative);
+  }
+
+  // Increment positive words & publish changes
+  tweet.sentiment.positive.forEach(async function (word) {
+    const count = await redis.zincrbyAsync('positive_words', 1, word);
+    logger.info(`Incremented positive word "${word}" to ${count}`);
+
+    redis.publish('positive_word_changed', JSON.stringify({word, count}));
   });
 
-  stream.on('error', err => console.log(err));
+  // Increment negative words & publish changes
+  tweet.sentiment.negative.forEach(async function (word) {
+    const count = await redis.zincrbyAsync('negative_words', 1, word);
+    logger.info(`Incremented negative word "${word}" to ${count}`);
+
+    redis.publish('negative_word_changed', JSON.stringify({word, count}));
+  });
+
+  // Publish tweet over redis
+  await redis.publishAsync('tweet', JSON.stringify(tweet));
+  logger.info('Tweet published to redis', {id: tweet.id});
+
+  logger.info('Tweet processed', {id: tweet.id});
 });
+
+// Log receiver errors
+receiver.on('error', (error) => logger.error(error));
+
+// Start the receiver when redis is ready
+redis.on('ready', () => receiver.start());
