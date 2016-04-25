@@ -24,7 +24,6 @@ export default class Receiver {
 
       stream.on('data', (tweet) => {
         if (!tweet.id || !tweet.text) {
-          console.log(tweet);
           return;
         }
 
