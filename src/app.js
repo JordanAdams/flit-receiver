@@ -17,7 +17,7 @@ receiver.on('tweet', async function (tweet) {
     const positive = await redis.incrAsync('positive');
     logger.info(`Positive count incremented to ${positive}`);
 
-    redis.publish('positive_changed', positive);
+    redis.publish('positive', positive);
   }
 
   // Update negative count & publish changes
@@ -25,23 +25,23 @@ receiver.on('tweet', async function (tweet) {
     const negative = await redis.incrAsync('negative');
     logger.info(`Negative count incremented to ${negative}`);
 
-    redis.publish('negative_changed', negative);
+    redis.publish('negative', negative);
   }
 
   // Increment positive words & publish changes
   tweet.sentiment.positive.forEach(async function (word) {
-    const count = await redis.zincrbyAsync('positive_words', 1, word);
-    logger.info(`Incremented positive word "${word}" to ${count}`);
+    const value = await redis.zincrbyAsync('positive_words', 1, word);
+    logger.info(`Incremented positive word "${word}" to ${value}`);
 
-    redis.publish('positive_word_changed', JSON.stringify({word, count}));
+    redis.publish('positive_words', JSON.stringify({word, value}));
   });
 
   // Increment negative words & publish changes
   tweet.sentiment.negative.forEach(async function (word) {
-    const count = await redis.zincrbyAsync('negative_words', 1, word);
-    logger.info(`Incremented negative word "${word}" to ${count}`);
+    const value = await redis.zincrbyAsync('negative_words', 1, word);
+    logger.info(`Incremented negative word "${word}" to ${value}`);
 
-    redis.publish('negative_word_changed', JSON.stringify({word, count}));
+    redis.publish('negative_words', JSON.stringify({word, value}));
   });
 
   // Publish tweet over redis
