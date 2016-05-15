@@ -1,42 +1,56 @@
 import {EventEmitter} from 'events';
-import twitter from './services/twitter';
-import transform from './transform-tweet';
-import filter from './filter-tweet';
+import defaultTwitter from './services/twitter';
+import defaultTransform from './transform-tweet';
+import defaultFilter from './filter-tweet';
 
-const defaults = {twitter, transform, filter};
+export const createReceiver = ({
+  twitter,
+  transform,
+  filter
+}) => {
+  const emitter = new EventEmitter();
 
-export default class Receiver {
-  constructor(options) {
-    this.options = Object.assign(defaults, options);
-    this.twitter = this.options.twitter;
-    this.transform = this.options.transform;
-    this.filter = this.options.filter;
-    this.emitter = new EventEmitter();
-  }
+  /**
+   * Attach an event handler
+   *
+   * @param  {String}   event   Event name
+   * @param  {function} handler Event handler
+   */
+  const on = (event, handler) => emitter.on(event, handler);
 
-  on(event, handler) {
-    this.emitter.on(event, handler);
-  }
+  /**
+   * Starts the receiver
+   */
+  const start = () => {
+    twitter.stream('/statuses/sample', {}, stream => {
+      emitter.emit('start');
 
-  start() {
-    this.twitter.stream('/statuses/sample', {'stall_warnings': true}, stream => {
-      this.emitter.emit('start');
-
-      stream.on('data', (tweet) => {
-        if (!tweet.id || !tweet.text) {
+      stream.on('data', (data) => {
+        if (!data.id || !data.text) {
           return;
         }
 
-        const transformed = this.transform(tweet);
+        const tweet = transform(data);
 
-        if (!this.filter(transformed)) {
+        if (!filter(tweet)) {
           return;
         }
 
-        this.emitter.emit('tweet', transformed);
+        emitter.emit('tweet', tweet);
       });
 
-      stream.on('error', err => this.emitter.emit('error', err));
+      stream.on('error', err => emitter.emit('error', err));
     });
-  }
-}
+  };
+
+  return {
+    on,
+    start
+  };
+};
+
+export const receiver = createReceiver({
+  twitter: defaultTwitter,
+  transform: defaultTransform,
+  filter: defaultFilter
+});

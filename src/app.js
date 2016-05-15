@@ -1,9 +1,8 @@
 import 'babel-polyfill';
 import logger from './logger';
-import Receiver from './receiver';
 import redis from './services/redis';
-
-const receiver = new Receiver();
+import {receiver} from './receiver';
+import {publisher} from './publisher';
 
 // Log starting the receiver
 receiver.on('start', () => logger.info('Receiver started'));
@@ -12,41 +11,31 @@ receiver.on('start', () => logger.info('Receiver started'));
 receiver.on('tweet', async function (tweet) {
   logger.info('Tweet received', {id: tweet.id});
 
+  await publisher.tweet(tweet);
+
   // Update positive count & publish changes
   if (tweet.sentiment.score > 0) {
-    const positive = await redis.incrAsync('positive');
-    logger.info(`Positive count incremented to ${positive}`);
-
-    redis.publish('positive', positive);
+    const value = await publisher.incrementPositive();
+    logger.info(`Positive count incremented to ${value}`);
   }
 
   // Update negative count & publish changes
   if (tweet.sentiment.score < 0) {
-    const negative = await redis.incrAsync('negative');
-    logger.info(`Negative count incremented to ${negative}`);
-
-    redis.publish('negative', negative);
+    const value = await publisher.incrementNegative();
+    logger.info(`Negative count incremented to ${value}`);
   }
 
   // Increment positive words & publish changes
   tweet.sentiment.positive.forEach(async function (word) {
-    const value = await redis.zincrbyAsync('positive_words', 1, word);
+    const value = await publisher.incrementPositiveWord(word);
     logger.info(`Incremented positive word "${word}" to ${value}`);
-
-    redis.publish('positive_words', JSON.stringify({word, value}));
   });
 
   // Increment negative words & publish changes
   tweet.sentiment.negative.forEach(async function (word) {
-    const value = await redis.zincrbyAsync('negative_words', 1, word);
+    const value = await publisher.incrementNegativeWord(word);
     logger.info(`Incremented negative word "${word}" to ${value}`);
-
-    redis.publish('negative_words', JSON.stringify({word, value}));
   });
-
-  // Publish tweet over redis
-  await redis.publishAsync('tweet', JSON.stringify(tweet));
-  logger.info('Tweet published to redis', {id: tweet.id});
 
   logger.info('Tweet processed', {id: tweet.id});
 });
