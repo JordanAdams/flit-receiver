@@ -3,7 +3,7 @@ import {createReceiver} from '../../src/receiver';
 
 export const twitterStream = new EventEmitter();
 export const twitter = {
-  stream: (endpoint, params, callback) => callback(twitterStream)
+  stream: () => twitterStream
 };
 
 export const transform = (tweet) => tweet;

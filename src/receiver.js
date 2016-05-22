@@ -22,25 +22,24 @@ export const createReceiver = ({
    * Starts the receiver
    */
   const start = () => {
-    twitter.stream('/statuses/sample', {}, stream => {
-      emitter.emit('start');
+    const stream = twitter.stream('statuses/sample');
+    emitter.emit('start');
 
-      stream.on('data', (data) => {
-        if (!data.id || !data.text) {
-          return;
-        }
+    stream.on('tweet', (data) => {
+      if (!data.id || !data.text) {
+        return;
+      }
 
-        const tweet = transform(data);
+      const tweet = transform(data);
 
-        if (!filter(tweet)) {
-          return;
-        }
+      if (!filter(tweet)) {
+        return;
+      }
 
-        emitter.emit('tweet', tweet);
-      });
-
-      stream.on('error', err => emitter.emit('error', err));
+      emitter.emit('tweet', tweet);
     });
+
+    stream.on('error', err => emitter.emit('error', err));
   };
 
   return {
